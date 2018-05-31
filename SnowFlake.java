@@ -35,7 +35,7 @@ public class SnowFlake {
     /**
      * 起始的时间戳
      */
-    private final static long START_TIME_STAMP = 1480166465631L;
+    private final static long START_TIME_STAMP = 1527753682640L;
 
     /**
      * 每一部分占用的位数
