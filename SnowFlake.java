@@ -1,103 +1,126 @@
-
 /**
  * twitter的snowflake算法 -- java实现
- * 
+ *
  * @author beyond
  * @date 2016/11/26
+ * <p>
+ * update 优化变量及方法名称
+ * editor __f1ndwh7
+ * date 2018/05/31
  */
 public class SnowFlake {
+
+    /*
+        snow flake bits meaning
+        0 is always the first bit
+        41bit timestamp = nowTimestamp - startTimestamp
+        5bit dataCenterId (custom decision)
+        5bit machineId  (custom decision)
+        12bit sequence = 4096 of 1 millisecond
+        1 + 41 + 5 + 5 + 12 = 64 = one Long number
+     */
+
+    /*
+        5bit max number
+        1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1
+        (-1L)
+        ^
+        1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 0 0 0 0
+        (-1L << 5)
+        =
+        0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1 1 1 1 1
+        (31L)
+     */
 
     /**
      * 起始的时间戳
      */
-    private final static long START_STMP = 1480166465631L;
+    private final static long START_TIME_STAMP = 1480166465631L;
 
     /**
      * 每一部分占用的位数
      */
-    private final static long SEQUENCE_BIT = 12; //序列号占用的位数
-    private final static long MACHINE_BIT = 5;   //机器标识占用的位数
-    private final static long DATACENTER_BIT = 5;//数据中心占用的位数
+    private final static long DATA_CENTER_BIT = 5;
+    private final static long MACHINE_BIT = 5;
+    private final static long SEQUENCE_BIT = 12;
 
     /**
      * 每一部分的最大值
      */
-    private final static long MAX_DATACENTER_NUM = -1L ^ (-1L << DATACENTER_BIT);
+    private final static long MAX_DATA_CENTER_NUM = -1L ^ (-1L << DATA_CENTER_BIT);
     private final static long MAX_MACHINE_NUM = -1L ^ (-1L << MACHINE_BIT);
     private final static long MAX_SEQUENCE = -1L ^ (-1L << SEQUENCE_BIT);
 
     /**
      * 每一部分向左的位移
      */
+    private final static long TIME_STAMP_LEFT = DATA_CENTER_BIT + MACHINE_BIT + SEQUENCE_BIT;
+    private final static long DATA_CENTER_LEFT = MACHINE_BIT + SEQUENCE_BIT;
     private final static long MACHINE_LEFT = SEQUENCE_BIT;
-    private final static long DATACENTER_LEFT = SEQUENCE_BIT + MACHINE_BIT;
-    private final static long TIMESTMP_LEFT = DATACENTER_LEFT + DATACENTER_BIT;
 
-    private long datacenterId;  //数据中心
-    private long machineId;     //机器标识
-    private long sequence = 0L; //序列号
-    private long lastStmp = -1L;//上一次时间戳
+    private long lastTimestamp = -1L;
+    private long dataCenterId;
+    private long machineId;
+    private long sequence = 0L;
 
-    public SnowFlake(long datacenterId, long machineId) {
-        if (datacenterId > MAX_DATACENTER_NUM || datacenterId < 0) {
-            throw new IllegalArgumentException("datacenterId can't be greater than MAX_DATACENTER_NUM or less than 0");
+    public SnowFlake(long dataCenterId, long machineId) {
+        if (dataCenterId > MAX_DATA_CENTER_NUM || dataCenterId < 0) {
+            throw new IllegalArgumentException("dataCenterId can't be greater than MAX_DATA_CENTER_NUM or less than 0");
         }
         if (machineId > MAX_MACHINE_NUM || machineId < 0) {
             throw new IllegalArgumentException("machineId can't be greater than MAX_MACHINE_NUM or less than 0");
         }
-        this.datacenterId = datacenterId;
+        this.dataCenterId = dataCenterId;
         this.machineId = machineId;
     }
 
     /**
      * 产生下一个ID
-     *
-     * @return
      */
-    public synchronized long nextId() {
-        long currStmp = getNewstmp();
-        if (currStmp < lastStmp) {
-            throw new RuntimeException("Clock moved backwards.  Refusing to generate id");
-        }
+    public synchronized long generateNextId() {
 
-        if (currStmp == lastStmp) {
-            //相同毫秒内，序列号自增
+        long nowTimestamp = nowTimestamp();
+        if (nowTimestamp > lastTimestamp) {
+            sequence = 0L;
+        } else if (nowTimestamp == lastTimestamp) {
             sequence = (sequence + 1) & MAX_SEQUENCE;
-            //同一毫秒的序列数已经达到最大
             if (sequence == 0L) {
-                currStmp = getNextMill();
+                nowTimestamp = nextTimestamp();
             }
         } else {
-            //不同毫秒内，序列号置为0
-            sequence = 0L;
+            throw new RuntimeException("Clock moved backwards. Refusing to generate id");
         }
+        lastTimestamp = nowTimestamp;
 
-        lastStmp = currStmp;
+        long timestampTemp = (nowTimestamp - START_TIME_STAMP) << TIME_STAMP_LEFT;
+        long dataCenterIdTemp = dataCenterId << DATA_CENTER_LEFT;
+        long machineIdTemp = machineId << MACHINE_LEFT;
+        long sequenceTemp = sequence;
 
-        return (currStmp - START_STMP) << TIMESTMP_LEFT //时间戳部分
-                | datacenterId << DATACENTER_LEFT       //数据中心部分
-                | machineId << MACHINE_LEFT             //机器标识部分
-                | sequence;                             //序列号部分
+        return timestampTemp | dataCenterIdTemp | machineIdTemp | sequenceTemp;
     }
 
-    private long getNextMill() {
-        long mill = getNewstmp();
-        while (mill <= lastStmp) {
-            mill = getNewstmp();
-        }
-        return mill;
-    }
-
-    private long getNewstmp() {
+    private long nowTimestamp() {
         return System.currentTimeMillis();
+    }
+
+    private long nextTimestamp() {
+        long nowTimestamp = nowTimestamp();
+        while (nowTimestamp <= lastTimestamp) {
+            nowTimestamp = nowTimestamp();
+        }
+        return nowTimestamp;
     }
 
     public static void main(String[] args) {
         SnowFlake snowFlake = new SnowFlake(2, 3);
 
-        for (int i = 0; i < (1 << 12); i++) {
-            System.out.println(snowFlake.nextId());
+        long beginTime = System.currentTimeMillis();
+        for (long i = 0; i < (1L << 16); i++) {
+            System.out.println(snowFlake.generateNextId());
         }
+        long endTime = System.currentTimeMillis();
 
+        System.out.println(endTime - beginTime);
     }
 }
